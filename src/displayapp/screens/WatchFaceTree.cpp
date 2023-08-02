@@ -12,56 +12,94 @@
 
 using namespace Pinetime::Applications::Screens;
 
+// TODO: Share these with WatchFaceAnalog.
+namespace {
+  constexpr int16_t HourLength = 70;
+  constexpr int16_t MinuteLength = 90;
+  constexpr int16_t SecondLength = 110;
+
+  // sin(90) = 1 so the value of _lv_trigo_sin(90) is the scaling factor
+  const auto LV_TRIG_SCALE = _lv_trigo_sin(90);
+
+  int16_t Cosine(int16_t angle) {
+    return _lv_trigo_sin(angle + 90);
+  }
+
+  int16_t Sine(int16_t angle) {
+    return _lv_trigo_sin(angle);
+  }
+
+  int16_t CoordinateXRelocate(int16_t x) {
+    return (x + LV_HOR_RES / 2);
+  }
+
+  int16_t CoordinateYRelocate(int16_t y) {
+    return std::abs(y - LV_HOR_RES / 2);
+  }
+
+  lv_point_t CoordinateRelocate(int16_t radius, int16_t angle) {
+    return lv_point_t {.x = CoordinateXRelocate(radius * static_cast<int32_t>(Sine(angle)) / LV_TRIG_SCALE),
+                       .y = CoordinateYRelocate(radius * static_cast<int32_t>(Cosine(angle)) / LV_TRIG_SCALE)};
+  }
+
+  static constexpr auto SECOND_GREEN = LV_COLOR_MAKE(17, 100, 2);
+  static constexpr auto HOUR_YELLOW = LV_COLOR_MAKE(230, 224, 24);
+  static constexpr auto MINUTE_BROWN = LV_COLOR_MAKE(145, 104, 3);
+}
+
 WatchFaceTree::WatchFaceTree(Controllers::DateTime& dateTimeController,
                                      const Controllers::Battery& batteryController,
                                      const Controllers::Ble& bleController,
                                      Controllers::NotificationManager& notificationManager,
                                      Controllers::Settings& settingsController,
                                      Controllers::HeartRateController& heartRateController,
-                                     Controllers::MotionController& motionController,
-                                     Controllers::FS& filesystem)
-  : currentDateTime {{}},
-    dateTimeController {dateTimeController},
+                                     Controllers::MotionController& motionController)
+  : dateTimeController {dateTimeController},
     batteryController {batteryController},
     bleController {bleController},
     notificationManager {notificationManager},
     settingsController {settingsController},
     heartRateController {heartRateController},
     motionController {motionController} {
-  batteryValue = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_recolor(batteryValue, true);
-  lv_obj_align(batteryValue, lv_scr_act(), LV_ALIGN_IN_LEFT_MID, 0, -20);
+  logoPine = lv_img_create(lv_scr_act(), nullptr);
+  lv_img_set_src(logoPine, "F:/images/tree_large.bin");
+  lv_obj_align(logoPine, NULL, LV_ALIGN_CENTER, 0, 0);
 
-  connectState = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_recolor(connectState, true);
-  lv_obj_align(connectState, lv_scr_act(), LV_ALIGN_IN_LEFT_MID, 0, 40);
+  minute_body = lv_line_create(lv_scr_act(), nullptr);
+  minute_body_trace = lv_line_create(lv_scr_act(), nullptr);
+  hour_body = lv_line_create(lv_scr_act(), nullptr);
+  hour_body_trace = lv_line_create(lv_scr_act(), nullptr);
+  second_body = lv_line_create(lv_scr_act(), nullptr);
 
-  notificationIcon = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_align(notificationIcon, nullptr, LV_ALIGN_IN_LEFT_MID, 0, -100);
+  lv_style_init(&second_line_style);
+  lv_style_set_line_width(&second_line_style, LV_STATE_DEFAULT, 3);
+  lv_style_set_line_color(&second_line_style, LV_STATE_DEFAULT, SECOND_GREEN);
+  lv_style_set_line_rounded(&second_line_style, LV_STATE_DEFAULT, true);
+  lv_obj_add_style(second_body, LV_LINE_PART_MAIN, &second_line_style);
 
-  label_date = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_recolor(label_date, true);
-  lv_obj_align(label_date, lv_scr_act(), LV_ALIGN_IN_LEFT_MID, 0, -40);
+  lv_style_init(&minute_line_style);
+  lv_style_set_line_width(&minute_line_style, LV_STATE_DEFAULT, 7);
+  lv_style_set_line_color(&minute_line_style, LV_STATE_DEFAULT, HOUR_YELLOW);
+  lv_style_set_line_rounded(&minute_line_style, LV_STATE_DEFAULT, true);
+  lv_obj_add_style(minute_body, LV_LINE_PART_MAIN, &minute_line_style);
 
-  label_prompt_1 = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_align(label_prompt_1, lv_scr_act(), LV_ALIGN_IN_LEFT_MID, 0, -80);
-  lv_label_set_text_static(label_prompt_1, "user@watch:~ $ now");
+  lv_style_init(&minute_line_style_trace);
+  lv_style_set_line_width(&minute_line_style_trace, LV_STATE_DEFAULT, 3);
+  lv_style_set_line_color(&minute_line_style_trace, LV_STATE_DEFAULT, HOUR_YELLOW);
+  lv_style_set_line_rounded(&minute_line_style_trace, LV_STATE_DEFAULT, false);
+  lv_obj_add_style(minute_body_trace, LV_LINE_PART_MAIN, &minute_line_style_trace);
 
-  label_prompt_2 = lv_label_create(lv_scr_act(), nullptr);
-  lv_obj_align(label_prompt_2, lv_scr_act(), LV_ALIGN_IN_LEFT_MID, 0, 60);
-  lv_label_set_text_static(label_prompt_2, "user@watch:~ $");
+  lv_style_init(&hour_line_style);
+  lv_style_set_line_width(&hour_line_style, LV_STATE_DEFAULT, 7);
+  lv_style_set_line_color(&hour_line_style, LV_STATE_DEFAULT, HOUR_YELLOW);
+  lv_style_set_line_rounded(&hour_line_style, LV_STATE_DEFAULT, true);
+  lv_obj_add_style(hour_body, LV_LINE_PART_MAIN, &hour_line_style);
 
-  label_time = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_recolor(label_time, true);
-  lv_obj_align(label_time, lv_scr_act(), LV_ALIGN_IN_LEFT_MID, 0, -60);
-
-  heartbeatValue = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_recolor(heartbeatValue, true);
-  lv_obj_align(heartbeatValue, lv_scr_act(), LV_ALIGN_IN_LEFT_MID, 0, 20);
-
-  stepValue = lv_label_create(lv_scr_act(), nullptr);
-  lv_label_set_recolor(stepValue, true);
-  lv_obj_align(stepValue, lv_scr_act(), LV_ALIGN_IN_LEFT_MID, 0, 0);
+  lv_style_init(&hour_line_style_trace);
+  lv_style_set_line_width(&hour_line_style_trace, LV_STATE_DEFAULT, 3);
+  lv_style_set_line_color(&hour_line_style_trace, LV_STATE_DEFAULT, HOUR_YELLOW);
+  lv_style_set_line_rounded(&hour_line_style_trace, LV_STATE_DEFAULT, false);
+  lv_obj_add_style(hour_body_trace, LV_LINE_PART_MAIN, &hour_line_style_trace);
 
   taskRefresh = lv_task_create(RefreshTaskCallback, LV_DISP_DEF_REFR_PERIOD, LV_TASK_PRIO_MID, this);
   Refresh();
@@ -73,93 +111,62 @@ WatchFaceTree::~WatchFaceTree() {
 }
 
 void WatchFaceTree::Refresh() {
-  powerPresent = batteryController.IsPowerPresent();
-  batteryPercentRemaining = batteryController.PercentRemaining();
-  if (batteryPercentRemaining.IsUpdated() || powerPresent.IsUpdated()) {
-    lv_label_set_text_fmt(batteryValue, "[BATT]#387b54 %d%%", batteryPercentRemaining.Get());
-    if (batteryController.IsPowerPresent()) {
-      lv_label_ins_text(batteryValue, LV_LABEL_POS_LAST, " Charging");
-    }
-  }
-
-  bleState = bleController.IsConnected();
-  bleRadioEnabled = bleController.IsRadioEnabled();
-  if (bleState.IsUpdated() || bleRadioEnabled.IsUpdated()) {
-    if (!bleRadioEnabled.Get()) {
-      lv_label_set_text_static(connectState, "[STAT]#0082fc Disabled#");
-    } else {
-      if (bleState.Get()) {
-        lv_label_set_text_static(connectState, "[STAT]#0082fc Connected#");
-      } else {
-        lv_label_set_text_static(connectState, "[STAT]#0082fc Disconnected#");
-      }
-    }
-  }
-
-  notificationState = notificationManager.AreNewNotificationsAvailable();
-  if (notificationState.IsUpdated()) {
-    if (notificationState.Get()) {
-      lv_label_set_text_static(notificationIcon, "You have mail.");
-    } else {
-      lv_label_set_text_static(notificationIcon, "");
-    }
-  }
-
-  currentDateTime = std::chrono::time_point_cast<std::chrono::seconds>(dateTimeController.CurrentDateTime());
+  currentDateTime = dateTimeController.CurrentDateTime();
   if (currentDateTime.IsUpdated()) {
-    uint8_t hour = dateTimeController.Hours();
-    uint8_t minute = dateTimeController.Minutes();
-    uint8_t second = dateTimeController.Seconds();
-
-    if (settingsController.GetClockType() == Controllers::Settings::ClockType::H12) {
-      char ampmChar[3] = "AM";
-      if (hour == 0) {
-        hour = 12;
-      } else if (hour == 12) {
-        ampmChar[0] = 'P';
-      } else if (hour > 12) {
-        hour = hour - 12;
-        ampmChar[0] = 'P';
-      }
-      lv_label_set_text_fmt(label_time, "[TIME]#11cc55 %02d:%02d:%02d %s#", hour, minute, second, ampmChar);
-    } else {
-      lv_label_set_text_fmt(label_time, "[TIME]#11cc55 %02d:%02d:%02d", hour, minute, second);
-    }
-
-    currentDate = std::chrono::time_point_cast<days>(currentDateTime.Get());
-    if (currentDate.IsUpdated()) {
-      uint16_t year = dateTimeController.Year();
-      Controllers::DateTime::Months month = dateTimeController.Month();
-      uint8_t day = dateTimeController.Day();
-      lv_label_set_text_fmt(label_date, "[DATE]#007fff %04d-%02d-%02d#", short(year), char(month), char(day));
-    }
-  }
-
-  heartbeat = heartRateController.HeartRate();
-  heartbeatRunning = heartRateController.State() != Controllers::HeartRateController::States::Stopped;
-  if (heartbeat.IsUpdated() || heartbeatRunning.IsUpdated()) {
-    if (heartbeatRunning.Get()) {
-      lv_label_set_text_fmt(heartbeatValue, "[L_HR]#ee3311 %d bpm#", heartbeat.Get());
-    } else {
-      lv_label_set_text_static(heartbeatValue, "[L_HR]#ee3311 ---#");
-    }
-  }
-
-  stepCount = motionController.NbSteps();
-  if (stepCount.IsUpdated()) {
-    lv_label_set_text_fmt(stepValue, "[STEP]#ee3377 %lu steps#", stepCount.Get());
+    UpdateClock();
   }
 }
 
 bool WatchFaceTree::IsAvailable(Pinetime::Controllers::FS& filesystem) {
-  // lfs_file file = {};
+  lfs_file file = {};
 
-  // filesystem.FileClose(&file);
-  // if (filesystem.FileOpen(&file, "/images/pine_small.bin", LFS_O_RDONLY) < 0) {
-  //   return false;
-  // }
+  if (filesystem.FileOpen(&file, "/images/tree_large.bin", LFS_O_RDONLY) < 0) {
+    return false;
+  }
 
-  // filesystem.FileClose(&file);
+  filesystem.FileClose(&file);
   return true;
 }
 
+
+void WatchFaceTree::UpdateClock() {
+  uint8_t hour = dateTimeController.Hours();
+  uint8_t minute = dateTimeController.Minutes();
+  uint8_t second = dateTimeController.Seconds();
+
+  if (sMinute != minute) {
+    auto const angle = minute * 6;
+    minute_point[0] = CoordinateRelocate(30, angle);
+    minute_point[1] = CoordinateRelocate(MinuteLength, angle);
+
+    minute_point_trace[0] = CoordinateRelocate(5, angle);
+    minute_point_trace[1] = CoordinateRelocate(31, angle);
+
+    lv_line_set_points(minute_body, minute_point, 2);
+    lv_line_set_points(minute_body_trace, minute_point_trace, 2);
+  }
+
+  if (sHour != hour || sMinute != minute) {
+    sHour = hour;
+    sMinute = minute;
+    auto const angle = (hour * 30 + minute / 2);
+
+    hour_point[0] = CoordinateRelocate(30, angle);
+    hour_point[1] = CoordinateRelocate(HourLength, angle);
+
+    hour_point_trace[0] = CoordinateRelocate(5, angle);
+    hour_point_trace[1] = CoordinateRelocate(31, angle);
+
+    lv_line_set_points(hour_body, hour_point, 2);
+    lv_line_set_points(hour_body_trace, hour_point_trace, 2);
+  }
+
+  if (sSecond != second) {
+    sSecond = second;
+    auto const angle = second * 6;
+
+    second_point[0] = CoordinateRelocate(-20, angle);
+    second_point[1] = CoordinateRelocate(SecondLength, angle);
+    lv_line_set_points(second_body, second_point, 2);
+  }
+}

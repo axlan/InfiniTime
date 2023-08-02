@@ -24,13 +24,12 @@ namespace Pinetime {
       class WatchFaceTree : public Screen {
       public:
         WatchFaceTree(Controllers::DateTime& dateTimeController,
-                          const Controllers::Battery& batteryController,
-                          const Controllers::Ble& bleController,
-                          Controllers::NotificationManager& notificationManager,
-                          Controllers::Settings& settingsController,
-                          Controllers::HeartRateController& heartRateController,
-                          Controllers::MotionController& motionController,
-                          Controllers::FS& filesystem);
+                      const Controllers::Battery& batteryController,
+                      const Controllers::Ble& bleController,
+                      Controllers::NotificationManager& notificationManager,
+                      Controllers::Settings& settingsController,
+                      Controllers::HeartRateController& heartRateController,
+                      Controllers::MotionController& motionController);
         ~WatchFaceTree() override;
 
         void Refresh() override;
@@ -38,27 +37,28 @@ namespace Pinetime {
         static bool IsAvailable(Pinetime::Controllers::FS& filesystem);
 
       private:
-        Utility::DirtyValue<int> batteryPercentRemaining {};
-        Utility::DirtyValue<bool> powerPresent {};
-        Utility::DirtyValue<bool> bleState {};
-        Utility::DirtyValue<bool> bleRadioEnabled {};
-        Utility::DirtyValue<std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>> currentDateTime {};
-        Utility::DirtyValue<uint32_t> stepCount {};
-        Utility::DirtyValue<uint8_t> heartbeat {};
-        Utility::DirtyValue<bool> heartbeatRunning {};
-        Utility::DirtyValue<bool> notificationState {};
-        using days = std::chrono::duration<int32_t, std::ratio<86400>>; // TODO: days is standard in c++20
-        Utility::DirtyValue<std::chrono::time_point<std::chrono::system_clock, days>> currentDate;
+        uint8_t sHour=99, sMinute=99, sSecond=99;
+        Utility::DirtyValue<std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>> currentDateTime;
 
-        lv_obj_t* label_time;
-        lv_obj_t* label_date;
-        lv_obj_t* label_prompt_1;
-        lv_obj_t* label_prompt_2;
-        lv_obj_t* batteryValue;
-        lv_obj_t* heartbeatValue;
-        lv_obj_t* stepValue;
-        lv_obj_t* notificationIcon;
-        lv_obj_t* connectState;
+        lv_obj_t* logoPine = nullptr;
+
+        lv_obj_t* hour_body;
+        lv_obj_t* hour_body_trace;
+        lv_obj_t* minute_body;
+        lv_obj_t* minute_body_trace;
+        lv_obj_t* second_body;
+
+        lv_point_t hour_point[2];
+        lv_point_t hour_point_trace[2];
+        lv_point_t minute_point[2];
+        lv_point_t minute_point_trace[2];
+        lv_point_t second_point[2];
+
+        lv_style_t hour_line_style;
+        lv_style_t hour_line_style_trace;
+        lv_style_t minute_line_style;
+        lv_style_t minute_line_style_trace;
+        lv_style_t second_line_style;
 
         Controllers::DateTime& dateTimeController;
         const Controllers::Battery& batteryController;
@@ -68,7 +68,9 @@ namespace Pinetime {
         Controllers::HeartRateController& heartRateController;
         Controllers::MotionController& motionController;
 
-        lv_task_t* taskRefresh;
+        lv_task_t* taskRefresh = nullptr;
+
+        void UpdateClock();
       };
     }
   }

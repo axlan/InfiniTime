@@ -122,8 +122,7 @@ std::unique_ptr<Screen> Clock::WatchFaceTreeScreen() {
                                                   notificationManager,
                                                   settingsController,
                                                   heartRateController,
-                                                  motionController,
-                                                  filesystem);
+                                                  motionController);
 }
 
 std::unique_ptr<Screen> Clock::WatchFaceInfineatScreen() {
